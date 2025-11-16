@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:release": "bash scripts/build-release.sh",
+    "publish:release": "bash scripts/publish-release.sh",
     "preview": "vite preview",
     "test:unit": "vitest",
     "typecheck": "vue-tsc --build --noEmit",
