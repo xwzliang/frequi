@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ChartSliderPosition, PairHistory, Trade } from '@/types';
+import type { ChartSliderPosition, PairHistory, PlotConfig, Trade } from '@/types';
 import { LoadingStatus } from '@/types';
 
 const props = withDefaults(
@@ -34,6 +34,7 @@ const botStore = useBotStore();
 const plotStore = usePlotConfigStore();
 
 const showPlotConfig = ref<boolean>();
+const lastLoadedStrategy = ref('');
 
 const dataset = computed((): PairHistory => {
   if (props.historicView) {
@@ -41,7 +42,9 @@ const dataset = computed((): PairHistory => {
   }
   return botStore.activeBot.candleData[`${botStore.activeBot.plotPair}__${props.timeframe}`]?.data;
 });
-const strategyName = computed(() => props.strategy || dataset.value?.strategy || '');
+const strategyName = computed(
+  () => props.strategy || botStore.activeBot.strategy.strategy || dataset.value?.strategy || '',
+);
 const datasetColumns = computed(() =>
   dataset.value ? (dataset.value.all_columns ?? dataset.value.columns) : [],
 );
@@ -161,6 +164,39 @@ function refreshIfNecessary() {
   }
 }
 
+const isPlotConfigEmpty = (config: PlotConfig | undefined) => {
+  if (!config) return true;
+  const hasMain = config.main_plot && Object.keys(config.main_plot).length > 0;
+  const hasSubplots = config.subplots && Object.keys(config.subplots).length > 0;
+  return !hasMain && !hasSubplots;
+};
+
+async function ensureStrategyPlotConfig() {
+  const strategyName = props.strategy || botStore.activeBot.strategy.strategy || dataset.value?.strategy || '';
+  if (!strategyName) return;
+  if (!botStore.activeBot.botFeatures.plotConfigFromServer) return;
+  if (!botStore.activeBot.isBotOnline) return;
+  if (lastLoadedStrategy.value === strategyName) return;
+
+  const currentConfig =
+    plotStore.customPlotConfigs[plotStore.plotConfigName] || plotStore.plotConfig;
+  if (!isPlotConfigEmpty(currentConfig)) {
+    lastLoadedStrategy.value = strategyName;
+    return;
+  }
+
+  try {
+    const strategyPlotConfig = await botStore.activeBot.getStrategyPlotConfig();
+    if (strategyPlotConfig) {
+      plotStore.saveCustomPlotConfig(plotStore.plotConfigName, strategyPlotConfig);
+      plotStore.plotConfigChanged();
+      lastLoadedStrategy.value = strategyName;
+    }
+  } catch (err) {
+    console.error('Failed to auto-load strategy plot config', err);
+  }
+}
+
 watch(
   () => props.timeframe,
   (newTf, oldTf) => {
@@ -257,6 +293,34 @@ watch(
   },
 );
 
+watch(
+  () => props.strategy,
+  () => {
+    ensureStrategyPlotConfig();
+  },
+);
+
+watch(
+  () => dataset.value?.strategy,
+  () => {
+    ensureStrategyPlotConfig();
+  },
+);
+
+watch(
+  () => botStore.activeBot.isBotOnline,
+  () => {
+    ensureStrategyPlotConfig();
+  },
+);
+
+watch(
+  () => botStore.activeBot.botFeatures.plotConfigFromServer,
+  () => {
+    ensureStrategyPlotConfig();
+  },
+);
+
 onMounted(() => {
   showPlotConfig.value = props.plotConfigModal;
   if (botStore.activeBot.selectedPair) {
@@ -265,6 +329,7 @@ onMounted(() => {
     assignFirstPair();
   }
   plotStore.plotConfigChanged();
+  ensureStrategyPlotConfig();
   if (!props.historicView) {
     refreshIfNecessary();
   }
