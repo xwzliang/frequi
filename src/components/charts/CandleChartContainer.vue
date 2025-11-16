@@ -48,6 +48,51 @@ const datasetColumns = computed(() =>
 const datasetLoadedColumns = computed(() =>
   dataset.value ? (dataset.value.columns ?? dataset.value.all_columns) : [],
 );
+const priceColumnBases = ['open', 'high', 'low', 'close', 'volume'] as const;
+const selectedPriceTimeframe = ref(props.timeframe || '');
+
+interface PriceTimeframeOption {
+  label: string;
+  value: string;
+}
+
+const availableAggregatedTimeframes = computed<string[]>(() => {
+  const order: string[] = [];
+  const columnSets: Record<string, Set<string>> = {};
+  datasetColumns.value.forEach((col) => {
+    const match = col.match(/^(open|high|low|close|volume)_([A-Za-z0-9]+)$/);
+    if (match) {
+      const [, base, tf] = match;
+      if (!columnSets[tf]) {
+        columnSets[tf] = new Set<string>();
+        order.push(tf);
+      }
+      columnSets[tf]?.add(base);
+    }
+  });
+  return order.filter(
+    (tf) => priceColumnBases.every((base) => columnSets[tf]?.has(base)),
+  );
+});
+
+const priceTimeframeOptions = computed<PriceTimeframeOption[]>(() => {
+  const base = props.timeframe || '';
+  const options: PriceTimeframeOption[] = base
+    ? [{ label: base, value: base }]
+    : [{ label: 'Configured', value: '' }];
+  availableAggregatedTimeframes.value.forEach((tf) => {
+    if (!options.find((opt) => opt.value === tf)) {
+      options.push({ label: tf, value: tf });
+    }
+  });
+  return options;
+});
+
+const showPriceTimeframeSelect = computed(
+  () => priceTimeframeOptions.value.length > 1,
+);
+
+const chartHeaderTimeframe = computed(() => selectedPriceTimeframe.value || props.timeframe || '');
 
 const hasDataset = computed(() => dataset.value && dataset.value.data.length > 0);
 const isLoadingDataset = computed((): boolean => {
@@ -86,6 +131,9 @@ function showConfigurator() {
 }
 
 function refresh() {
+  if (!botStore.activeBot.plotPair || !props.timeframe) {
+    return;
+  }
   emit('refreshData', botStore.activeBot.plotPair, plotStore.usedColumns);
 }
 
@@ -94,6 +142,26 @@ function refreshIfNecessary() {
     refresh();
   }
 }
+
+watch(
+  () => props.timeframe,
+  (newTf, oldTf) => {
+    if (
+      !selectedPriceTimeframe.value ||
+      selectedPriceTimeframe.value === oldTf
+    ) {
+      selectedPriceTimeframe.value = newTf || '';
+    }
+  },
+);
+
+watch(priceTimeframeOptions, (options) => {
+  if (!options.some((opt) => opt.value === selectedPriceTimeframe.value)) {
+    selectedPriceTimeframe.value = props.timeframe || options[0]?.value || '';
+  } else if (!selectedPriceTimeframe.value && options[0]) {
+    selectedPriceTimeframe.value = options[0].value;
+  }
+});
 
 function assignFirstPair() {
   const [firstPair] = props.availablePairs;
@@ -170,7 +238,18 @@ onMounted(() => {
     <div class="flex-fill w-full flex-col align-items-stretch flex h-full">
       <div class="flex me-0">
         <div class="ms-1 md:ms-2 flex flex-wrap md:flex-nowrap items-center gap-1">
-          <span class="md:ms-2 text-nowrap">{{ strategyName }} | {{ timeframe || '' }}</span>
+          <span class="md:ms-2 text-nowrap"
+            >{{ strategyName }} | {{ chartHeaderTimeframe }}</span
+          >
+          <Select
+            v-if="showPriceTimeframeSelect"
+            v-model="selectedPriceTimeframe"
+            class="md:ms-2"
+            size="small"
+            :options="priceTimeframeOptions"
+            :option-label="(option) => option.label"
+            :option-value="(option) => option.value"
+          />
           <Select
             v-model="botStore.activeBot.plotPair"
             class="md:ms-2"
@@ -247,6 +326,7 @@ onMounted(() => {
             :dataset="dataset"
             :trades="trades"
             :plot-config="plotStore.plotConfig"
+            :price-timeframe="selectedPriceTimeframe"
             :heikin-ashi="settingsStore.useHeikinAshiCandles"
             :show-mark-area="settingsStore.showMarkArea"
             :use-u-t-c="settingsStore.timezone === 'UTC'"

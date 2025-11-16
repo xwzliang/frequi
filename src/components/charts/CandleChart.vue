@@ -26,6 +26,7 @@ import {
 } from 'echarts/components';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
+import roundTimeframe from '@/utils/roundTimeframe';
 
 use([
   AxisPointerComponent,
@@ -65,6 +66,7 @@ const props = defineProps<{
   colorDown: string;
   labelSide: 'left' | 'right';
   startCandleCount: number;
+  priceTimeframe?: string;
 }>();
 
 const isLabelLeft = computed(() => props.labelSide === 'left');
@@ -102,6 +104,17 @@ const pair = computed(() => {
 const timeframe = computed(() => {
   return props.dataset ? props.dataset.timeframe : '';
 });
+const chartPriceTimeframe = computed(() => props.priceTimeframe || timeframe.value);
+const chartTimeframeMs = computed(() => timeframeToMs(chartPriceTimeframe.value, props.dataset.timeframe_ms));
+const priceColumnSuffix = computed(() => {
+  if (!props.priceTimeframe) {
+    return '';
+  }
+  if (!timeframe.value || props.priceTimeframe !== timeframe.value) {
+    return props.priceTimeframe;
+  }
+  return '';
+});
 
 const hasData = computed(() => {
   return props.dataset !== null && typeof props.dataset === 'object';
@@ -112,7 +125,7 @@ const filteredTrades = computed(() => {
 });
 
 const chartTitle = computed(() => {
-  return `${strategy.value} - ${pair.value} - ${timeframe.value}`;
+  return `${strategy.value} - ${pair.value} - ${chartPriceTimeframe.value}`;
 });
 
 const diffCols = computed(() => {
@@ -122,7 +135,7 @@ const diffCols = computed(() => {
 usePercentageTool(
   candleChart,
   toRef(() => props.theme),
-  toRef(() => props.dataset.timeframe_ms),
+  chartTimeframeMs,
 );
 
 function updateChart(initial = false) {
@@ -135,12 +148,23 @@ function updateChart(initial = false) {
   // Avoid mutation of dataset.columns array
   const columns = props.dataset.columns.slice();
 
+  const findPriceColumnIndex = (baseColumn: string) => {
+    if (priceColumnSuffix.value) {
+      const aggregatedColumn = `${baseColumn}_${priceColumnSuffix.value}`;
+      const aggregatedIdx = columns.findIndex((el) => el === aggregatedColumn);
+      if (aggregatedIdx !== -1) {
+        return aggregatedIdx;
+      }
+    }
+    return columns.findIndex((el) => el === baseColumn);
+  };
+
   const colDate = columns.findIndex((el) => el === '__date_ts');
-  const colOpen = columns.findIndex((el) => el === 'open');
-  const colHigh = columns.findIndex((el) => el === 'high');
-  const colLow = columns.findIndex((el) => el === 'low');
-  const colClose = columns.findIndex((el) => el === 'close');
-  const colVolume = columns.findIndex((el) => el === 'volume');
+  const colOpen = findPriceColumnIndex('open');
+  const colHigh = findPriceColumnIndex('high');
+  const colLow = findPriceColumnIndex('low');
+  const colClose = findPriceColumnIndex('close');
+  const colVolume = findPriceColumnIndex('volume');
   const colEnterTag = columns.findIndex((el) => el === 'enter_tag');
   const colExitTag = columns.findIndex((el) => el === 'exit_tag');
 
@@ -177,9 +201,22 @@ function updateChart(initial = false) {
       });
     }
   }
+  const aggregatedDataset = aggregatePriceDataset(
+    props.dataset.data,
+    columns,
+    colDate,
+    colOpen,
+    colHigh,
+    colLow,
+    colClose,
+    colVolume,
+    chartTimeframeMs.value,
+    props.dataset.timeframe_ms,
+  );
+
   let dataset = props.heikinAshi
-    ? heikinAshiDataset(columns, props.dataset.data)
-    : props.dataset.data.slice();
+    ? heikinAshiDataset(columns, aggregatedDataset)
+    : aggregatedDataset.slice();
 
   diffCols.value.forEach(([colFrom, colTo]) => {
     if (colFrom && colTo) {
@@ -192,7 +229,7 @@ function updateChart(initial = false) {
   const lastColDate = dataset[dataset.length - 1]?.[colDate];
   if (lastColDate) {
     const newArray = Array(scrollPastLength);
-    newArray[colDate] = lastColDate + props.dataset.timeframe_ms * scrollPastLength;
+    newArray[colDate] = lastColDate + chartTimeframeMs.value * scrollPastLength;
     dataset.push(newArray);
   }
 
@@ -675,13 +712,85 @@ function initializeChartOptions() {
   updateChart(true);
 }
 
+function timeframeToMs(timeframe: string, fallback: number): number {
+  const match = timeframe?.match(/^(\d+)([mhdwMy])$/);
+  if (!match) return fallback;
+  const value = Number(match[1]);
+  const unit = match[2];
+  const factor =
+    unit === 'm'
+      ? 60 * 1000
+      : unit === 'h'
+        ? 60 * 60 * 1000
+        : unit === 'd'
+          ? 24 * 60 * 60 * 1000
+          : unit === 'w'
+            ? 7 * 24 * 60 * 60 * 1000
+            : unit === 'M'
+              ? 30 * 24 * 60 * 60 * 1000
+              : unit === 'y'
+                ? 365 * 24 * 60 * 60 * 1000
+                : 0;
+  return factor ? value * factor : fallback;
+}
+
+function aggregatePriceDataset(
+  data: number[][],
+  columns: string[],
+  colDate: number,
+  colOpen: number,
+  colHigh: number,
+  colLow: number,
+  colClose: number,
+  colVolume: number,
+  targetTimeframeMs: number,
+  baseTimeframeMs: number,
+): number[][] {
+  if (
+    targetTimeframeMs <= 0 ||
+    targetTimeframeMs === baseTimeframeMs ||
+    [colDate, colOpen, colHigh, colLow, colClose, colVolume].some((c) => c < 0)
+  ) {
+    return data.slice();
+  }
+
+  const buckets = new Map<number, number[]>();
+  data.forEach((row) => {
+    const ts = row[colDate];
+    if (!ts) return;
+    const bucket = roundTimeframe(targetTimeframeMs, ts);
+    const existing = buckets.get(bucket);
+    if (!existing) {
+      const newRow = Array(columns.length).fill(null);
+      newRow[colDate] = bucket;
+      newRow[colOpen] = row[colOpen];
+      newRow[colHigh] = row[colHigh];
+      newRow[colLow] = row[colLow];
+      newRow[colClose] = row[colClose];
+      newRow[colVolume] = row[colVolume] ?? 0;
+      buckets.set(bucket, newRow);
+    } else {
+      existing[colHigh] = Math.max(existing[colHigh] ?? row[colHigh], row[colHigh]);
+      existing[colLow] = Math.min(
+        existing[colLow] ?? row[colLow],
+        row[colLow] ?? existing[colLow],
+      );
+      existing[colClose] = row[colClose];
+      existing[colVolume] = (existing[colVolume] ?? 0) + (row[colVolume] ?? 0);
+    }
+  });
+  return Array.from(buckets.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([, row]) => row);
+}
+
 function updateSliderPosition() {
   if (!props.sliderPosition) return;
 
-  const start = props.sliderPosition.startValue - props.dataset.timeframe_ms * 40;
+  const start = props.sliderPosition.startValue - chartTimeframeMs.value * 40;
   const end = props.sliderPosition.endValue
-    ? props.sliderPosition.endValue + props.dataset.timeframe_ms * 40
-    : props.sliderPosition.startValue + props.dataset.timeframe_ms * 80;
+    ? props.sliderPosition.endValue + chartTimeframeMs.value * 40
+    : props.sliderPosition.startValue + chartTimeframeMs.value * 80;
   if (candleChart.value) {
     candleChart.value.dispatchAction({
       type: 'dataZoom',
@@ -718,7 +827,10 @@ watch([() => props.useUTC, () => props.theme, () => props.plotConfig], () =>
   initializeChartOptions(),
 );
 
-watch([() => props.dataset, () => props.heikinAshi, () => props.showMarkArea], () => updateChart());
+watch(
+  [() => props.dataset, () => props.heikinAshi, () => props.showMarkArea, () => props.priceTimeframe],
+  () => updateChart(),
+);
 
 watch(
   () => props.sliderPosition,
