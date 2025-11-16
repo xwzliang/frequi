@@ -106,15 +106,7 @@ const timeframe = computed(() => {
 });
 const chartPriceTimeframe = computed(() => props.priceTimeframe || timeframe.value);
 const chartTimeframeMs = computed(() => timeframeToMs(chartPriceTimeframe.value, props.dataset.timeframe_ms));
-const priceColumnSuffix = computed(() => {
-  if (!props.priceTimeframe) {
-    return '';
-  }
-  if (!timeframe.value || props.priceTimeframe !== timeframe.value) {
-    return props.priceTimeframe;
-  }
-  return '';
-});
+const priceColumnSuffix = computed(() => chartPriceTimeframe.value || '');
 
 const hasData = computed(() => {
   return props.dataset !== null && typeof props.dataset === 'object';
@@ -127,6 +119,8 @@ const filteredTrades = computed(() => {
 const chartTitle = computed(() => {
   return `${strategy.value} - ${pair.value} - ${chartPriceTimeframe.value}`;
 });
+
+let lastSampleLogKey = '';
 
 const diffCols = computed(() => {
   return getDiffColumnsFromPlotConfig(props.plotConfig);
@@ -149,12 +143,14 @@ function updateChart(initial = false) {
   const columns = props.dataset.columns.slice();
 
   const findColumnIndex = (name: string) => {
-    if (priceColumnSuffix.value) {
+    if (priceColumnSuffix.value && !name.endsWith(`_${priceColumnSuffix.value}`)) {
       const suffixed = `${name}_${priceColumnSuffix.value}`;
       const idxSuffixed = columns.findIndex((el) => el === suffixed);
       if (idxSuffixed !== -1) return idxSuffixed;
+      console.log(`[CandleChart] Column ${suffixed} not found, falling back to ${name}`);
     }
-    return columns.findIndex((el) => el === name);
+    const exactIdx = columns.findIndex((el) => el === name);
+    return exactIdx;
   };
 
   const findPriceColumnIndex = (baseColumn: string) => findColumnIndex(baseColumn);
@@ -194,6 +190,40 @@ function updateChart(initial = false) {
   let dataset = props.heikinAshi
     ? heikinAshiDataset(columns, aggregatedDataset)
     : aggregatedDataset.slice();
+
+  // Debug sample logging for timeframe-specific columns
+  // const priceChangeCol = findColumnIndex('price_change_percentage');
+  // if (colOpen >= 0 && colClose >= 0 && colDate >= 0 && priceChangeCol >= 0 && dataset.length > 0) {
+  //   const logKey = `${chartPriceTimeframe.value}-${dataset[0]?.[colDate]}-${dataset[dataset.length - 1]?.[colDate]}`;
+  //   if (logKey !== lastSampleLogKey) {
+  //     lastSampleLogKey = logKey;
+  //     const columnName = columns[priceChangeCol];
+  //     const priceChangeColumns = columns.filter((c) => c.startsWith('price_change_percentage'));
+  //     const sample = dataset.slice(0, Math.min(3, dataset.length)).map((row, idx) => {
+  //       const openVal = row[colOpen];
+  //       const closeVal = row[colClose];
+  //       const pctCol = row[priceChangeCol];
+  //       const expected =
+  //         openVal !== null && openVal !== undefined && openVal !== 0
+  //           ? ((closeVal - openVal) / openVal) * 100
+  //           : null;
+  //       return {
+  //         idx,
+  //         date: row[colDate],
+  //         date_iso: row[colDate] ? new Date(row[colDate]).toISOString() : null,
+  //         open: openVal,
+  //         close: closeVal,
+  //         price_change_column_value: pctCol,
+  //         price_change_column_name: columnName,
+  //         expected_price_change: expected,
+  //       };
+  //     });
+  //     console.log(
+  //       `[CandleChart] Sample ${chartPriceTimeframe.value} candles (col=${columnName}, suffix=${priceColumnSuffix.value || 'native'}, available=${priceChangeColumns.join(',')})`,
+  //       sample,
+  //     );
+  //   }
+  // }
 
   const subplotCount =
     'subplots' in props.plotConfig ? Object.keys(props.plotConfig.subplots).length + 1 : 1;

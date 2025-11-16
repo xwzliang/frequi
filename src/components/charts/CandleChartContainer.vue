@@ -49,7 +49,7 @@ const datasetLoadedColumns = computed(() =>
   dataset.value ? (dataset.value.columns ?? dataset.value.all_columns) : [],
 );
 const priceColumnBases = ['open', 'high', 'low', 'close', 'volume'] as const;
-const selectedPriceTimeframe = ref(props.timeframe || '');
+const selectedPriceTimeframe = ref('');
 
 interface PriceTimeframeOption {
   label: string;
@@ -130,11 +130,29 @@ function showConfigurator() {
   }
 }
 
+const requestedColumns = computed(() => {
+  const suffix = selectedPriceTimeframe.value;
+  const cols = new Set<string>(plotStore.usedColumns);
+  // Always request price change so timeframe-specific variants are available
+  cols.add('price_change_percentage');
+
+  if (suffix) {
+    cols.add(`price_change_percentage_${suffix}`);
+    cols.forEach((col) => {
+      if (!col.endsWith(`_${suffix}`)) {
+        cols.add(`${col}_${suffix}`);
+      }
+    });
+  }
+
+  return [...cols];
+});
+
 function refresh() {
   if (!botStore.activeBot.plotPair || !props.timeframe) {
     return;
   }
-  emit('refreshData', botStore.activeBot.plotPair, plotStore.usedColumns);
+  emit('refreshData', botStore.activeBot.plotPair, requestedColumns.value);
 }
 
 function refreshIfNecessary() {
@@ -155,13 +173,33 @@ watch(
   },
 );
 
-watch(priceTimeframeOptions, (options) => {
-  if (!options.some((opt) => opt.value === selectedPriceTimeframe.value)) {
-    selectedPriceTimeframe.value = props.timeframe || options[0]?.value || '';
-  } else if (!selectedPriceTimeframe.value && options[0]) {
-    selectedPriceTimeframe.value = options[0].value;
-  }
-});
+watch(
+  () => selectedPriceTimeframe.value,
+  () => {
+    refresh();
+  },
+);
+
+watch(
+  priceTimeframeOptions,
+  (options) => {
+    const preferred = options.find((opt) => opt.value === '15m') ?? options[0];
+    const preferredValue = preferred?.value ?? '';
+    const current = selectedPriceTimeframe.value;
+    const currentExists = options.some((opt) => opt.value === current);
+
+    if (!currentExists || (!current && preferredValue)) {
+      selectedPriceTimeframe.value = preferredValue || props.timeframe || '';
+    } else if (
+      preferredValue &&
+      current === props.timeframe &&
+      preferredValue !== current
+    ) {
+      selectedPriceTimeframe.value = preferredValue;
+    }
+  },
+  { immediate: true },
+);
 
 function assignFirstPair() {
   const [firstPair] = props.availablePairs;
