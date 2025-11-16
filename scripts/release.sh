@@ -1,1 +1,1 @@
-pnpm run publish:release -- --repo xwzliang/frequi v0.0.1 "FreqUI v0.0.1" RELEASE_NOTES.md
+pnpm run publish:release -- --repo xwzliang/frequi --force v0.0.1 "FreqUI v0.0.1" RELEASE_NOTES.md
