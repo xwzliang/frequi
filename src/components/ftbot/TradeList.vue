@@ -52,6 +52,7 @@ function formatPriceWithDecimals(price: number) {
 const tableFields = ref([
   { field: 'trade_id', header: 'ID' },
   { field: 'pair', header: 'Pair' },
+  { field: 'enter_tag', header: 'Enter Tag' },
   { field: 'amount', header: 'Amount' },
   props.activeTrades
     ? { field: 'stake_amount', header: 'Stake amount' }
