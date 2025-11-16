@@ -33,16 +33,20 @@ const tableItems = computed<ComparisonTableItems[]>(() => {
 
     const allOpenTrades = botStore.allOpenTrades[k];
     if (!allOpenTrades) return;
-    const allStakes = allOpenTrades.reduce((a, b) => a + b.stake_amount, 0);
-    const profitOpenRatio =
-      allOpenTrades.reduce(
-        (a, b) => a + (b.total_profit_ratio ?? b.profit_ratio) * b.stake_amount,
-        0,
-      ) / allStakes;
+    const profitClosed = v?.profit_closed_coin ?? 0;
+    const profitClosedRatio = v?.profit_closed_ratio || 0;
+    const calculatedBalance =
+      profitClosedRatio !== 0 ? profitClosed / profitClosedRatio : undefined;
+    const botBalance =
+      calculatedBalance ??
+      botStore.allBalance[k]?.total_bot ??
+      botStore.allBalance[k]?.total ??
+      0;
     const profitOpen = allOpenTrades.reduce(
       (a, b) => a + (b.total_profit_abs ?? b.profit_abs ?? 0),
       0,
     );
+    const profitOpenRatio = botBalance ? profitOpen / botBalance : 0;
 
     // TODO: handle one inactive bot ...
     val.push({
@@ -54,14 +58,14 @@ const tableItems = computed<ComparisonTableItems[]>(() => {
       trades: `${botStore.allOpenTradeCount[k]} / ${
         botStore.allBotState[k]?.max_open_trades || 'N/A'
       }`,
-      profitClosed: v?.profit_closed_coin ?? 0,
-      profitClosedRatio: v?.profit_closed_ratio || 0,
+      profitClosed,
+      profitClosedRatio,
       stakeCurrency: botStore.allBotState[k]?.stake_currency || '',
       profitOpenRatio,
       profitOpen,
       wins: v?.winning_trades ?? 0,
       losses: v?.losing_trades ?? 0,
-      balance: botStore.allBalance[k]?.total_bot ?? botStore.allBalance[k]?.total ?? 0,
+      balance: botBalance,
       stakeCurrencyDecimals: botStore.allBotState[k]?.stake_currency_decimals || 3,
       isDryRun: botStore.allBotState[k]?.dry_run,
       isOnline: botStore.botStores[k]?.isBotOnline,
@@ -75,8 +79,7 @@ const tableItems = computed<ComparisonTableItems[]>(() => {
         summary.wins += v.winning_trades;
         summary.losses += v.losing_trades;
         if (botStore.allSelectedBotsSameStake) {
-          summary.balance +=
-            botStore.allBalance[k]?.total_bot ?? botStore.allBalance[k]?.total ?? 0;
+          summary.balance += botBalance;
           summary.stakeCurrencyDecimals = botStore.allBotState[k]?.stake_currency_decimals || 3;
           if (botStore.allSelectedBotsSameState) {
             summary.balanceAppendix = botStore.allBotState[k]?.dry_run ? '(dry)' : '(live)';
