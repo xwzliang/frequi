@@ -178,29 +178,6 @@ function updateChart(initial = false) {
   const colShortEntryData = columns.findIndex((el) => el === '_enter_short_signal_close');
   const colShortExitData = columns.findIndex((el) => el === '_exit_short_signal_close');
 
-  const subplotCount =
-    'subplots' in props.plotConfig ? Object.keys(props.plotConfig.subplots).length + 1 : 1;
-
-  if (Array.isArray(chartOptions.value?.dataZoom)) {
-    // Only set zoom once ...
-    if (initial) {
-      // Add 2 candles to the initial zoom to allow for a "scroll past" effect
-      const startingZoom = (1 - (props.startCandleCount + 2) / props.dataset.length) * 100;
-      chartOptions.value.dataZoom.forEach((el, i) => {
-        if (chartOptions.value && chartOptions.value.dataZoom) {
-          chartOptions.value.dataZoom[i].start = startingZoom;
-        }
-      });
-    } else {
-      // Remove start/end settings after chart initialization to avoid chart resetting
-      chartOptions.value.dataZoom.forEach((el, i) => {
-        if (chartOptions.value && chartOptions.value.dataZoom) {
-          delete chartOptions.value.dataZoom[i].start;
-          delete chartOptions.value.dataZoom[i].end;
-        }
-      });
-    }
-  }
   const aggregatedDataset = aggregatePriceDataset(
     props.dataset.data,
     columns,
@@ -217,6 +194,31 @@ function updateChart(initial = false) {
   let dataset = props.heikinAshi
     ? heikinAshiDataset(columns, aggregatedDataset)
     : aggregatedDataset.slice();
+
+  const subplotCount =
+    'subplots' in props.plotConfig ? Object.keys(props.plotConfig.subplots).length + 1 : 1;
+
+  if (Array.isArray(chartOptions.value?.dataZoom)) {
+    // Only set zoom once ...
+    if (initial) {
+      // Add 2 candles to the initial zoom to allow for a "scroll past" effect
+      const currentLength = Math.max(dataset.length, 1);
+      const startingZoom = (1 - (props.startCandleCount + 2) / currentLength) * 100;
+      chartOptions.value.dataZoom.forEach((el, i) => {
+        if (chartOptions.value && chartOptions.value.dataZoom) {
+          chartOptions.value.dataZoom[i].start = startingZoom;
+        }
+      });
+    } else {
+      // Remove start/end settings after chart initialization to avoid chart resetting
+      chartOptions.value.dataZoom.forEach((el, i) => {
+        if (chartOptions.value && chartOptions.value.dataZoom) {
+          delete chartOptions.value.dataZoom[i].start;
+          delete chartOptions.value.dataZoom[i].end;
+        }
+      });
+    }
+  }
 
   diffCols.value.forEach(([colFrom, colTo]) => {
     if (colFrom && colTo) {
@@ -680,12 +682,14 @@ function initializeChartOptions() {
         xAxisIndex: [0, 1],
         start: 80,
         end: 100,
+        filterMode: 'filter',
       },
       {
         xAxisIndex: [0, 1],
         bottom: 10,
         start: 80,
         end: 100,
+        filterMode: 'filter',
         ...dataZoomPartial,
       },
     ],
@@ -830,6 +834,13 @@ watch([() => props.useUTC, () => props.theme, () => props.plotConfig], () =>
 watch(
   [() => props.dataset, () => props.heikinAshi, () => props.showMarkArea, () => props.priceTimeframe],
   () => updateChart(),
+);
+
+watch(
+  () => props.priceTimeframe,
+  () => {
+    updateChart(true);
+  },
 );
 
 watch(
