@@ -148,16 +148,16 @@ function updateChart(initial = false) {
   // Avoid mutation of dataset.columns array
   const columns = props.dataset.columns.slice();
 
-  const findPriceColumnIndex = (baseColumn: string) => {
+  const findColumnIndex = (name: string) => {
     if (priceColumnSuffix.value) {
-      const aggregatedColumn = `${baseColumn}_${priceColumnSuffix.value}`;
-      const aggregatedIdx = columns.findIndex((el) => el === aggregatedColumn);
-      if (aggregatedIdx !== -1) {
-        return aggregatedIdx;
-      }
+      const suffixed = `${name}_${priceColumnSuffix.value}`;
+      const idxSuffixed = columns.findIndex((el) => el === suffixed);
+      if (idxSuffixed !== -1) return idxSuffixed;
     }
-    return columns.findIndex((el) => el === baseColumn);
+    return columns.findIndex((el) => el === name);
   };
+
+  const findPriceColumnIndex = (baseColumn: string) => findColumnIndex(baseColumn);
 
   const colDate = columns.findIndex((el) => el === '__date_ts');
   const colOpen = findPriceColumnIndex('open');
@@ -165,8 +165,8 @@ function updateChart(initial = false) {
   const colLow = findPriceColumnIndex('low');
   const colClose = findPriceColumnIndex('close');
   const colVolume = findPriceColumnIndex('volume');
-  const colEnterTag = columns.findIndex((el) => el === 'enter_tag');
-  const colExitTag = columns.findIndex((el) => el === 'exit_tag');
+  const colEnterTag = findColumnIndex('enter_tag');
+  const colExitTag = findColumnIndex('exit_tag');
 
   const colEntryData = columns.findIndex(
     (el) => el === '_buy_signal_close' || el === '_enter_long_signal_close',
@@ -389,8 +389,8 @@ function updateChart(initial = false) {
 
   if ('main_plot' in props.plotConfig) {
     Object.entries(props.plotConfig.main_plot).forEach(([key, value]) => {
-      const col = columns.findIndex((el) => el === key);
-      if (col > 0) {
+      const col = findColumnIndex(key);
+      if (col >= 0) {
         if (!Array.isArray(chartOptions.value?.legend) && chartOptions.value?.legend?.data) {
           chartOptions.value.legend.data.push(key);
         }
@@ -400,7 +400,7 @@ function updateChart(initial = false) {
           if (value.fill_to) {
             // Assign
             const fillColKey = `${key}-${value.fill_to}`;
-            const fillCol = columns.findIndex((el) => el === fillColKey);
+            const fillCol = findColumnIndex(fillColKey);
             const fillValue: IndicatorConfig = {
               color: value.color,
               type: ChartType.line,
@@ -477,8 +477,8 @@ function updateChart(initial = false) {
       }
       Object.entries(value).forEach(([sk, sv]) => {
         // entries per subplot
-        const col = columns.findIndex((el) => el === sk);
-        if (col > 0) {
+        const col = findColumnIndex(sk);
+        if (col >= 0) {
           if (!Array.isArray(chartOptions.value.legend) && chartOptions.value.legend?.data) {
             chartOptions.value.legend.data.push(sk);
           }
@@ -487,7 +487,7 @@ function updateChart(initial = false) {
             if (sv.fill_to) {
               // Assign
               const fillColKey = `${sk}-${sv.fill_to}`;
-              const fillCol = columns.findIndex((el) => el === fillColKey);
+              const fillCol = findColumnIndex(fillColKey);
               const fillValue: IndicatorConfig = {
                 color: sv.color,
                 type: ChartType.line,
@@ -772,6 +772,12 @@ function aggregatePriceDataset(
       newRow[colLow] = row[colLow];
       newRow[colClose] = row[colClose];
       newRow[colVolume] = row[colVolume] ?? 0;
+      // Seed other columns with the first row of the bucket
+      columns.forEach((_, idx) => {
+        if (![colDate, colOpen, colHigh, colLow, colClose, colVolume].includes(idx)) {
+          newRow[idx] = row[idx];
+        }
+      });
       buckets.set(bucket, newRow);
     } else {
       existing[colHigh] = Math.max(existing[colHigh] ?? row[colHigh], row[colHigh]);
@@ -781,6 +787,12 @@ function aggregatePriceDataset(
       );
       existing[colClose] = row[colClose];
       existing[colVolume] = (existing[colVolume] ?? 0) + (row[colVolume] ?? 0);
+      // Overwrite other columns with the latest value in the bucket
+      columns.forEach((_, idx) => {
+        if (![colDate, colOpen, colHigh, colLow, colClose, colVolume].includes(idx)) {
+          existing[idx] = row[idx];
+        }
+      });
     }
   });
   return Array.from(buckets.entries())
