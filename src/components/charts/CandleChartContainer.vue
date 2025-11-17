@@ -173,6 +173,24 @@ function refreshIfNecessary() {
   }
 }
 
+function clearOtherTimeframeData(targetTimeframe: string) {
+  const pair = botStore.activeBot.plotPair;
+  if (!pair || !targetTimeframe) return;
+
+  const clearKeys = (store: Record<string, unknown>) => {
+    Object.keys(store).forEach((key) => {
+      const [keyPair, keyTimeframe] = key.split('__');
+      if (keyPair === pair && keyTimeframe !== targetTimeframe) {
+        delete store[key];
+      }
+    });
+  };
+
+  clearKeys(botStore.activeBot.candleData);
+  clearKeys(botStore.activeBot.history);
+  clearKeys(botStore.activeBot.lastRequestedColumns);
+}
+
 const isPlotConfigEmpty = (config: PlotConfig | undefined) => {
   if (!config) return true;
   const hasMain = config.main_plot && Object.keys(config.main_plot).length > 0;
@@ -215,6 +233,9 @@ watch(
     ) {
       selectedPriceTimeframe.value = newTf || '';
     }
+    if (newTf) {
+      clearOtherTimeframeData(newTf);
+    }
   },
 );
 
@@ -233,14 +254,9 @@ watch(
     const current = selectedPriceTimeframe.value;
     const currentExists = options.some((opt) => opt.value === current);
 
+    // Only auto-assign when there is no current selection or it is no longer available
     if (!currentExists || (!current && preferredValue)) {
       selectedPriceTimeframe.value = preferredValue || props.timeframe || '';
-    } else if (
-      preferredValue &&
-      current === props.timeframe &&
-      preferredValue !== current
-    ) {
-      selectedPriceTimeframe.value = preferredValue;
     }
   },
   { immediate: true },
