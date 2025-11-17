@@ -128,6 +128,7 @@ export function createBotSubStore(botId: string, botName: string) {
         backtestHistory: {} as Record<string, BacktestResultInMemory>,
         backtestHistoryList: [] as BacktestHistoryEntry[],
         sysInfo: {} as SysInfoResponse,
+        lastRequestedColumns: {} as Record<string, string[]>,
       };
     },
     getters: {
@@ -363,18 +364,30 @@ export function createBotSubStore(botId: string, botName: string) {
         if (payload.pair && payload.timeframe) {
           this.candleDataStatus = LoadingStatus.loading;
           try {
+            const plotStore = usePlotConfigStore();
+            const key = `${payload.pair}__${payload.timeframe}`;
+            const columnsSource =
+              (payload.columns && payload.columns.length > 0 && payload.columns) ||
+              (this.lastRequestedColumns[key] && this.lastRequestedColumns[key].length > 0
+                ? this.lastRequestedColumns[key]
+                : undefined) ||
+              plotStore.usedColumns;
+            const columns = columnsSource && columnsSource.length > 0 ? columnsSource : undefined;
+            if (columns) {
+              this.lastRequestedColumns[key] = columns;
+            }
             let result: PairHistory | null = null;
             const settingsStore = useSettingsStore();
             if (this.botFeatures.reducedPairCalls && settingsStore.useReducedPairCalls) {
               // Modern approach, allowing filtering of columns
               const { data } = await api.post<PairCandlePayload, AxiosResponse<PairHistory>>(
                 '/pair_candles',
-                payload,
+                { ...payload, columns },
               );
               result = data;
             } else {
               const { data } = await api.get<PairHistory>('/pair_candles', {
-                params: { ...payload },
+                params: { ...payload, columns },
               });
               result = data;
             }
@@ -1164,7 +1177,12 @@ export function createBotSubStore(botId: string, botName: string) {
             if (pair === this.plotPair) {
               // Reload pair candles
               const plotStore = usePlotConfigStore();
-              this.getPairCandles({ pair, timeframe, columns: plotStore.usedColumns });
+              const key = `${pair}__${timeframe}`;
+              const columns =
+                (this.lastRequestedColumns[key] && this.lastRequestedColumns[key].length > 0
+                  ? this.lastRequestedColumns[key]
+                  : undefined) || plotStore.usedColumns;
+              this.getPairCandles({ pair, timeframe, columns });
             }
             break;
           }

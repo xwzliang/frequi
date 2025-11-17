@@ -136,16 +136,25 @@ function showConfigurator() {
 const requestedColumns = computed(() => {
   const suffix = selectedPriceTimeframe.value;
   const cols = new Set<string>(plotStore.usedColumns);
-  // Always request price change so timeframe-specific variants are available
-  cols.add('price_change_percentage');
+  // Decide which price change column to request based on availability
+  const suffixedPriceChange = suffix ? `price_change_percentage_${suffix}` : '';
+  const hasSuffixedPriceChange =
+    suffix && datasetColumns.value.includes(suffixedPriceChange);
 
   if (suffix) {
-    cols.add(`price_change_percentage_${suffix}`);
+    // Prefer suffixed price change when the timeframe is selected
+    cols.add(suffixedPriceChange);
     cols.forEach((col) => {
       if (!col.endsWith(`_${suffix}`)) {
         cols.add(`${col}_${suffix}`);
       }
     });
+    // Only request base price change if the suffixed one is not present
+    if (!hasSuffixedPriceChange) {
+      cols.add('price_change_percentage');
+    }
+  } else {
+    cols.add('price_change_percentage');
   }
 
   return [...cols];

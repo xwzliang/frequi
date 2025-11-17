@@ -139,7 +139,7 @@ function updateChart(initial = false) {
   if (chartOptions.value?.title) {
     chartOptions.value.title[0].text = chartTitle.value;
   }
-  // Avoid mutation of dataset.columns array
+  // Avoid mutation of dataset columns array
   const columns = props.dataset.columns.slice();
 
   const findColumnIndex = (name: string) => {
@@ -147,7 +147,9 @@ function updateChart(initial = false) {
       const suffixed = `${name}_${priceColumnSuffix.value}`;
       const idxSuffixed = columns.findIndex((el) => el === suffixed);
       if (idxSuffixed !== -1) return idxSuffixed;
-      console.log(`[CandleChart] Column ${suffixed} not found, falling back to ${name}`);
+      console.log(
+        `[CandleChart] Column ${suffixed} not found, falling back to ${name}. Columns now: ${columns.join(',')}`,
+      );
     }
     const exactIdx = columns.findIndex((el) => el === name);
     return exactIdx;
