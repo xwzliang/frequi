@@ -83,11 +83,26 @@ const priceTimeframeOptions = computed<PriceTimeframeOption[]>(() => {
   const options: PriceTimeframeOption[] = base
     ? [{ label: base, value: base }]
     : [{ label: 'Configured', value: '' }];
+  const seen = new Set(options.map((opt) => opt.value));
+
   availableAggregatedTimeframes.value.forEach((tf) => {
-    if (!options.find((opt) => opt.value === tf)) {
+    if (!seen.has(tf)) {
       options.push({ label: tf, value: tf });
+      seen.add(tf);
     }
   });
+
+  const persisted = settingsStore.chartPriceTimeframe;
+  if (persisted && !seen.has(persisted)) {
+    options.push({ label: persisted, value: persisted });
+    seen.add(persisted);
+  }
+
+  const current = selectedPriceTimeframe.value;
+  if (current && !seen.has(current)) {
+    options.push({ label: current, value: current });
+  }
+
   return options;
 });
 
@@ -241,7 +256,10 @@ watch(
 
 watch(
   () => selectedPriceTimeframe.value,
-  () => {
+  (newTf) => {
+    if (newTf) {
+      settingsStore.chartPriceTimeframe = newTf;
+    }
     refresh();
   },
 );
@@ -249,14 +267,18 @@ watch(
 watch(
   priceTimeframeOptions,
   (options) => {
-    const preferred = options.find((opt) => opt.value === '15m') ?? options[0];
-    const preferredValue = preferred?.value ?? '';
-    const current = selectedPriceTimeframe.value;
-    const currentExists = options.some((opt) => opt.value === current);
+    const pickCandidate = (target?: string) =>
+      target && options.find((opt) => opt.value === target)?.value;
 
-    // Only auto-assign when there is no current selection or it is no longer available
-    if (!currentExists || (!current && preferredValue)) {
-      selectedPriceTimeframe.value = preferredValue || props.timeframe || '';
+    const preferredValue =
+      pickCandidate(selectedPriceTimeframe.value) ||
+      pickCandidate(settingsStore.chartPriceTimeframe) ||
+      pickCandidate(props.timeframe) ||
+      options[0]?.value ||
+      '';
+
+    if (preferredValue && preferredValue !== selectedPriceTimeframe.value) {
+      selectedPriceTimeframe.value = preferredValue;
     }
   },
   { immediate: true },

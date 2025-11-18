@@ -30,6 +30,7 @@ export const useSettingsStore = defineStore('uiSettings', {
       useReducedPairCalls: true,
       notifications: notificationDefaults,
       profitDistributionBins: 20,
+      chartPriceTimeframe: '15m',
       confirmDialog: true,
       chartLabelSide: 'right' as 'left' | 'right',
       chartDefaultCandleCount: 250,
