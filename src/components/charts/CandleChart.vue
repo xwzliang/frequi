@@ -147,9 +147,9 @@ function updateChart(initial = false) {
       const suffixed = `${name}_${priceColumnSuffix.value}`;
       const idxSuffixed = columns.findIndex((el) => el === suffixed);
       if (idxSuffixed !== -1) return idxSuffixed;
-      console.log(
-        `[CandleChart] Column ${suffixed} not found, falling back to ${name}. Columns now: ${columns.join(',')}`,
-      );
+      // console.log(
+      //   `[CandleChart] Column ${suffixed} not found, falling back to ${name}. Columns now: ${columns.join(',')}`,
+      // );
     }
     const exactIdx = columns.findIndex((el) => el === name);
     return exactIdx;
