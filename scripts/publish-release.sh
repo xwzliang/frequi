@@ -43,6 +43,28 @@ NOTES_FILE="${3:-}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ZIP_NAME="${ZIP_NAME:-freqUI.zip}"
 ZIP_PATH="${ROOT_DIR}/${ZIP_NAME}"
+GIT_REMOTE="${GIT_REMOTE:-origin}"
+
+cd "$ROOT_DIR"
+
+delete_git_tag_if_exists() {
+  local tag="$1"
+  if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+    echo "Deleting local tag ${tag}..."
+    git tag -d "$tag" >/dev/null
+  fi
+
+  if git remote get-url "$GIT_REMOTE" >/dev/null 2>&1; then
+    if git ls-remote --tags "$GIT_REMOTE" "refs/tags/${tag}" | grep -q "refs/tags/${tag}$"; then
+      echo "Deleting remote tag ${tag} from ${GIT_REMOTE}..."
+      git push "$GIT_REMOTE" --delete "refs/tags/${tag}"
+    else
+      echo "Remote tag ${tag} not found on ${GIT_REMOTE}."
+    fi
+  else
+    echo "Remote '${GIT_REMOTE}' not found. Skipping remote tag deletion."
+  fi
+}
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "GitHub CLI (gh) is required. Install it from https://cli.github.com/ and authenticate via 'gh auth login'." >&2
@@ -63,6 +85,7 @@ if $FORCE_DELETE; then
   else
     echo "No existing release ${TAG} found. Continuing..."
   fi
+  delete_git_tag_if_exists "$TAG"
 fi
 
 "${ROOT_DIR}/scripts/build-release.sh" "$ZIP_NAME"
